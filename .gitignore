@@ -16,3 +16,7 @@ wheels/
 
 # Windsurf
 .windsurfrules
+
+# Editor
+.zed/
+.vscode/
