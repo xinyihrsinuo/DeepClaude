@@ -130,6 +130,12 @@ class ModelConfig(BaseModel):
 model_config = None
 
 
+def get_model_config() -> ModelConfig:
+    if model_config is None:
+        raise ValueError("Model config not initialized")
+    return model_config
+
+
 def pass_model_config(data):
     global model_config
     model_config = ModelConfig(**data)

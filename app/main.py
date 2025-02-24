@@ -1,16 +1,19 @@
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from app.config.model_config import get_model_config
 from app.deepclaude.deepclaude import DeepClaude
 from app.openai_composite import OpenAICompatibleComposite
 from app.utils.auth import verify_api_key
+from app.utils.config.loader import load_model_config, load_shown_model_config
+from app.utils.config.processor import generate_shown_models
 from app.utils.logger import logger
-from app.config import load_models_config
 
 # 加载环境变量
 load_dotenv()
@@ -50,6 +53,23 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Load model_config from model.example.yaml
+try:
+    load_model_config(Path(__file__).parent.parent / "model.example.yaml")
+except Exception as e:
+    logger.error(
+        f"Failed to load model config: {e}\n\nPlease check the model.yaml file."
+    )
+    sys.exit(1)
+
+logger.info("App config loaded successfully")
+logger.debug(get_model_config())
+
+generate_shown_models(Path(__file__).parent / "shown_models.yaml")
+logger.info(
+    "Shown models generated at {}".format(Path(__file__).parent / "shown_models.yaml")
 )
 
 # 创建 DeepClaude 实例, 提出为Global变量
@@ -96,8 +116,9 @@ async def list_models():
     获取可用模型列表
     返回格式遵循 OpenAI API 标准
     """
+    logger.info("获取可用模型列表")
     try:
-        config = load_models_config()
+        config = load_shown_model_config()
         return {"object": "list", "data": config["models"]}
     except Exception as e:
         logger.error(f"加载模型配置时发生错误: {e}")
@@ -134,7 +155,9 @@ async def chat_completions(request: Request):
         # 3. 根据模型选择不同的处理方式
         if model == "deepclaude":
             # 使用 DeepClaude
-            claude_model = ENV_CLAUDE_MODEL if ENV_CLAUDE_MODEL else "claude-3-5-sonnet-20241022"
+            claude_model = (
+                ENV_CLAUDE_MODEL if ENV_CLAUDE_MODEL else "claude-3-5-sonnet-20241022"
+            )
             if stream:
                 return StreamingResponse(
                     deep_claude.chat_completions_with_stream(
