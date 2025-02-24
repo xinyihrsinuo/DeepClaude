@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 import yaml
 
-from app.config.model_config import pass_model_config
+from app.config.model_config import set_model_config
 from app.utils.logger import logger
 
 
@@ -15,7 +15,10 @@ def load_model_config(yaml_path: Path):
     if not data:
         logger.error(f"Model config file: {yaml_path} is empty")
         raise ValueError("Config file is empty")
-    pass_model_config(data)
+    set_model_config(data)
+
+
+shown_model_cache = None
 
 
 def load_shown_model_config() -> Dict[str, List[Dict[str, Any]]]:
@@ -24,6 +27,11 @@ def load_shown_model_config() -> Dict[str, List[Dict[str, Any]]]:
     Returns:
         Dict[str, List[Dict[str, Any]]]: 模型配置字典
     """
+    global shown_model_cache
+
+    if shown_model_cache is not None:
+        return shown_model_cache
     config_path = Path(__file__).parent.parent.parent / "shown_models.yaml"
     with open(config_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        shown_model_cache = yaml.safe_load(f)
+        return shown_model_cache

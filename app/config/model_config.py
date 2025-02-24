@@ -136,6 +136,6 @@ def get_model_config() -> ModelConfig:
     return model_config
 
 
-def pass_model_config(data):
+def set_model_config(data):
     global model_config
     model_config = ModelConfig(**data)
