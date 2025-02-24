@@ -1,9 +1,9 @@
 """Model Configuration Classes"""
 
 from enum import Enum
-from typing import List
+from typing import Dict, List
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, model_validator, validator
 
 from app.utils.logger import logger
 
@@ -14,7 +14,7 @@ class ProviderType(str, Enum):
     OPENAI_COMPATIBLE = "openai-compatible"
 
 
-class Provider(BaseModel):
+class ProviderConfig(BaseModel):
     name: str
     type: ProviderType
     base_url: str
@@ -22,7 +22,7 @@ class Provider(BaseModel):
 
     # validate existed ProviderType
     @validator("type")
-    def validate_provider_type(cls, v) -> ProviderType:
+    def _validate_provider_type(cls, v) -> ProviderType:
         if v not in ProviderType:
             logger.error(f"Invalid provider type: '{v}'")
             raise ValueError(
@@ -30,13 +30,13 @@ class Provider(BaseModel):
             )
         return v
 
-    @root_validator(skip_on_failure=True)
-    def validate_fields_not_none(cls, values):
-        for field_name, value in values.items():
+    @model_validator(mode="after")
+    def _validate_fields_not_none(self):
+        for field_name, value in self.__dict__.items():
             if value is None:
                 logger.error(f"Field '{field_name}' cannot be None")
                 raise ValueError(f"Field '{field_name}' cannot be None")
-        return values
+        return self
 
 
 class BaseModelConfig(BaseModel):
@@ -46,13 +46,13 @@ class BaseModelConfig(BaseModel):
     context: int = Field(gt=0)
     max_tokens: int = Field(gt=0)
 
-    @root_validator(skip_on_failure=True)
-    def validate_fields_not_none(cls, values):
-        for field_name, value in values.items():
+    @model_validator(mode="after")
+    def _validate_fields_not_none(self):
+        for field_name, value in self.__dict__.items():
             if value is None:
                 logger.error(f"Field '{field_name}' cannot be None")
                 raise ValueError(f"Field '{field_name}' cannot be None")
-        return values
+        return self
 
 
 class DeepModelConfig(BaseModel):
@@ -61,22 +61,25 @@ class DeepModelConfig(BaseModel):
     answer_model: str
     is_origin_reasoning: bool = Field(default=True)
 
-    @root_validator(skip_on_failure=True)
-    def validate_fields_not_none(cls, values):
-        for field_name, value in values.items():
+    @model_validator(mode="after")
+    def _validate_fields_not_none(self):
+        for field_name, value in self.__dict__.items():
             if value is None:
                 logger.error(f"Field '{field_name}' cannot be None")
                 raise ValueError(f"Field '{field_name}' cannot be None")
-        return values
+        return self
 
 
 class ModelConfig(BaseModel):
-    providers: List[Provider]
+    providers: List[ProviderConfig]
     base_models: List[BaseModelConfig]
     deep_models: List[DeepModelConfig]
+    _provider_map: Dict[str, ProviderConfig]
+    _base_model_map: Dict[str, BaseModelConfig]
+    _context_map: Dict[str, int]
 
     @validator("providers")
-    def check_unique_provider_names(cls, providers):
+    def _check_unique_provider_names(cls, providers):
         names = [p.name for p in providers]
         if len(names) != len(set(names)):
             logger.error(f"Provider '{names}' duplicated")
@@ -84,25 +87,25 @@ class ModelConfig(BaseModel):
         return providers
 
     @validator("base_models")
-    def check_unique_base_model_names(cls, base_models):
+    def _check_unique_base_model_names(cls, base_models):
         names = [p.name for p in base_models]
         if len(names) != len(set(names)):
             logger.error(f"Base model '{names}' duplicated")
             raise ValueError("Base model names must be unique")
         return base_models
 
-    @root_validator(skip_on_failure=True)
-    def validate_fields_not_none(cls, values):
-        for field_name, value in values.items():
+    @model_validator(mode="after")
+    def _validate_fields_not_none(self):
+        for field_name, value in self.__dict__.items():
             if value is None:
                 logger.error(f"Field '{field_name}' cannot be None")
                 raise ValueError(f"Field '{field_name}' cannot be None")
-        return values
+        return self
 
-    @root_validator(skip_on_failure=True)
-    def check_reference_existence(cls, values):
-        providers: List[Provider] = values.get("providers", [])
-        base_models: List[BaseModelConfig] = values.get("base_models", [])
+    @model_validator(mode="after")
+    def _check_reference_existence(self):
+        providers: List[ProviderConfig] = self.providers
+        base_models: List[BaseModelConfig] = self.base_models
         provider_names = {p.name for p in providers}
         for model in base_models:
             if model.provider not in provider_names:
@@ -111,7 +114,7 @@ class ModelConfig(BaseModel):
                 )
                 raise ValueError(f"Provider '{model.provider}' not found")
 
-        deep_models: List[DeepModelConfig] = values.get("deep_models", [])
+        deep_models: List[DeepModelConfig] = self.deep_models
         base_model_names = [m.name for m in base_models]
         for model in deep_models:
             if model.reason_model not in base_model_names:
@@ -124,7 +127,48 @@ class ModelConfig(BaseModel):
                     f"Base model '{model.answer_model}' of DeepModel '{model.name}' not found"
                 )
                 raise ValueError(f"Base model '{model.answer_model}' not found")
-        return values
+        return self
+
+    @model_validator(mode="after")
+    def _build_maps(self):
+        """Build maps as index for providers, base models, and contexts. Optimized for performance"""
+        providers: List[ProviderConfig] = self.providers
+        base_models: List[BaseModelConfig] = self.base_models
+        self._provider_map = {p.name: p for p in providers}
+        self._base_model_map = {m.name: m for m in base_models}
+        self._context_map = {}
+
+        for model in self.deep_models:
+            reason_context = self.get_base_model(model.reason_model).context
+            answer_context = self.get_base_model(model.answer_model).context
+            # Select the maximum context between reason and answer models as the context for the deep model
+            self._context_map[model.name] = max(reason_context, answer_context)
+
+        return self
+
+    def get_provider(self, name: str) -> ProviderConfig:
+        provider = self._provider_map.get(name)
+        if not provider:
+            logger.error(f"Provider '{name}' not found")
+            raise ValueError(f"Provider '{name}' not found")
+        return provider
+
+    def get_base_model(self, name: str) -> BaseModelConfig:
+        model = self._base_model_map.get(name)
+        if not model:
+            logger.error(f"Model '{name}' not found")
+            raise ValueError(f"Model '{name}' not found")
+        return model
+
+    def get_model_request_info(self, model_name: str) -> Dict[str, str]:
+        base_model = self.get_base_model(model_name)
+        provider = self.get_provider(base_model.provider)
+
+        return {
+            "model_id": base_model.model_id,
+            "base_url": provider.base_url,
+            "api_key": provider.api_key,
+        }
 
 
 model_config = None
