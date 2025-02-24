@@ -1,0 +1,50 @@
+providers:
+  - name: "anthropic"
+    type: "anthropic" # Support "anthropic", "openrouter" and "openai-compatible"
+    base_url: "https://api.anthropic.com/v1/messages"
+    api_key: <your_api_key_here>
+
+  - name: "deepseek"
+    type: "openai-compatible"
+    base_url: "https://api.deepseek.com/v1/chat/completions"
+    api_key: <your_api_key_here>
+
+  - name: "openrouter"
+    type: "openrouter"
+    base_url: "https://openrouter.ai/api/v1/chat/completions"
+    api_key: <your_api_key_here>
+
+  - name: "google"
+    type: "openai-compatible"
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    api_key: <your_api_key_here>
+
+base_models:
+  - name: "official-deepseek-r1"
+    model_id: "deepseek-reasoner"
+    provider: "deepseek"
+    context: 65536
+    max_tokens: 4096
+
+  - name: "official-claude-sonnet"
+    model_id: "claude-3-5-sonnet-20241022"
+    provider: "anthropic"
+    context: 204800
+    max_tokens: 8192
+
+  - name: "official-gemini2.0-pro"
+    model_id: "gemini-2.0-pro-exp"
+    provider: "google"
+    context: 204800
+    max_tokens: 8192
+
+deep_models:
+  - name: "deepclaude"
+    reason_model: "official-deepseek-r1"
+    answer_model: "official-claude-sonnet"
+    is_origin_reasoning: true
+
+  - name: "deepgemini"
+    reason_model: "official-deepseek-r1"
+    answer_model: "official-gemini2.0-pro"
+    is_origin_reasoning: true
