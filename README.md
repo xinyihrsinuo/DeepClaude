@@ -122,33 +122,24 @@ Step 3. 配置环境变量
 cp .env.example .env
 ```
 
-Step 4. 按照环境变量当中的注释依次填写配置信息
+Step 4. 配置模型信息
 ```bash
-# 此处为各个环境变量的解释
-ALLOW_API_KEY=你允许向你本地或服务器发起请求所需的 API 密钥，可随意设置
-DEEPSEEK_API_KEY=deepseek r1 所需的 API 密钥，可在👆上面步骤 1 处获取
-DEEPSEEK_API_URL=请求 deepseek r1 所需的请求地址，根据你的供应商说明进行填写
-DEEPSEEK_MODEL=不同供应商的 deepseek r1 模型名称不同，根据你的供应商说明进行填写
-IS_ORIGIN_REASONING=是否原生支持推理，只有满血版 671B 的 deepseek r1 支持，其余蒸馏模型不支持
-
-CLAUDE_API_KEY=Claude 3.5 Sonnet 的 API 密钥，可在👆上面步骤 1 处获取
-CLAUDE_MODEL=Claude 3.5 Sonnet 的模型名称，不同供应商的名称不同，根据你的供应商说明进行填写
-CLAUDE_PROVIDER=支持 anthropic (官方) 以及 oneapi（其他中转服务商）两种模式，根据你的供应商填写
-CLAUDE_API_URL=请求 Claude 3.5 Sonnet 所需的请求地址，根据你的供应商说明进行填写
-
-OPENAI_COMPOSITE_API_KEY=通常推荐配置为 Gemini 的 API 密钥，可在👆上面步骤 1 处获取
-OPENAI_COMPOSITE_API_URL=请求 Gemini 所需的请求地址，默认地址为 https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
-OPENAI_COMPOSITE_MODEL=通常推荐配置为 Gemini 的模型名称，可配置为 gemini-2.0-flash 或 gemini-2.0-pro-exp（pro 版本当前为实验模型）
-
+# 复制 model.example.yaml 文件为 model.yaml
+cp model.example.yaml model.yaml
 ```
 
-Step 5. 通过命令行启动
+
+Step 5. 按照环境变量以及模型信息配置文件中的注释填写信息
+
+...
+
+Step 6. 通过命令行启动
 ```bash
 # 本地运行
 uvicorn app.main:app
 ```
 
-Step 6. 配置程序到你的 Chatbox（推荐 [Cherry Studio](https://cherry-ai.com) [NextChat](https://nextchat.dev/)、[ChatBox](https://chatboxai.app/zh)、[LobeChat](https://lobechat.com/)）
+Step 7. 配置程序到你的 Chatbox（推荐 [Cherry Studio](https://cherry-ai.com) [NextChat](https://nextchat.dev/)、[ChatBox](https://chatboxai.app/zh)、[LobeChat](https://lobechat.com/)）
 
 ```bash
 # 如果你的客户端是 Cherry Studio、Chatbox（OpenAI API 模式，注意不是 OpenAI 兼容模式）
@@ -162,6 +153,8 @@ Step 6. 配置程序到你的 Chatbox（推荐 [Cherry Studio](https://cherry-ai
 # 支持获取模型列表，可以同时获取到 deepclaude 模型和 deepgemini 模型
 
 ```
+
+_注意: 部分Chat应用中的"获取模型列表"方法无法设置为"从客户端请求"(例如`LobeChat`), 这样会造成云端部署的聊天应用向其部署主机请求模型列表. 故如果Chat应用部署在云服务器中, 而DeepClaude在本地运行时(`http:127.0.0.1:xxxx`）将无法正常获取模型列表. 将DeepClaude部署在云端并使用域名访问即可解决._
 
 **注：本项目采用 uv 作为包管理器，这是一个更快速更现代的管理方式，用于替代 pip，你可以[在此了解更多](https://docs.astral.sh/uv/)**
 
