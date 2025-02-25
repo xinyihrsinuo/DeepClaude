@@ -9,7 +9,6 @@ from fastapi.responses import StreamingResponse
 
 from app.config.model_config import get_model_config
 from app.deepclaude.deepclaude import DeepClaude
-from app.openai_composite import OpenAICompatibleComposite
 from app.utils.auth import verify_api_key
 from app.utils.config.loader import load_model_config, load_shown_model_config
 from app.utils.config.processor import generate_shown_models
@@ -22,25 +21,6 @@ app = FastAPI(title="DeepClaude API")
 
 # 从环境变量获取 CORS配置, API 密钥、地址以及模型名称
 ALLOW_ORIGINS = os.getenv("ALLOW_ORIGINS", "*")
-
-CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
-ENV_CLAUDE_MODEL = os.getenv("CLAUDE_MODEL")
-CLAUDE_PROVIDER = os.getenv(
-    "CLAUDE_PROVIDER", "anthropic"
-)  # Claude模型提供商, 默认为anthropic
-CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://api.anthropic.com/v1/messages")
-
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_API_URL = os.getenv(
-    "DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions"
-)
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-reasoner")
-
-OPENAI_COMPOSITE_API_KEY = os.getenv("OPENAI_COMPOSITE_API_KEY")
-OPENAI_COMPOSITE_API_URL = os.getenv("OPENAI_COMPOSITE_API_URL")
-OPENAI_COMPOSITE_MODEL = os.getenv("OPENAI_COMPOSITE_MODEL")
-
-IS_ORIGIN_REASONING = os.getenv("IS_ORIGIN_REASONING", "True").lower() == "true"
 
 # CORS设置
 allow_origins_list = (
@@ -57,7 +37,7 @@ app.add_middleware(
 
 # Load model_config from model.example.yaml
 try:
-    load_model_config(Path(__file__).parent.parent / "model.example.yaml")
+    load_model_config(Path(__file__).parent.parent / "model.yaml")
 except Exception as e:
     logger.error(
         f"Failed to load model config: {e}\n\nPlease check the model.yaml file."
@@ -72,32 +52,8 @@ logger.info(
     "Shown models generated at {}".format(Path(__file__).parent / "shown_models.yaml")
 )
 
-# 创建 DeepClaude 实例, 提出为Global变量
-if not DEEPSEEK_API_KEY or not CLAUDE_API_KEY:
-    logger.critical("请设置环境变量 CLAUDE_API_KEY 和 DEEPSEEK_API_KEY")
-    sys.exit(1)
-
-deep_claude = DeepClaude(
-    DEEPSEEK_API_KEY,
-    CLAUDE_API_KEY,
-    DEEPSEEK_API_URL,
-    CLAUDE_API_URL,
-    CLAUDE_PROVIDER,
-    IS_ORIGIN_REASONING,
-)
-
-# 创建 OpenAICompatibleComposite 实例
-# if not DEEPSEEK_API_KEY or not OPENAI_COMPOSITE_API_KEY:
-#     logger.critical("请设置环境变量 OPENAI_COMPOSITE_API_KEY 和 DEEPSEEK_API_KEY")
-#     sys.exit(1)
-
-openai_composite = OpenAICompatibleComposite(
-    DEEPSEEK_API_KEY,
-    OPENAI_COMPOSITE_API_KEY,
-    DEEPSEEK_API_URL,
-    OPENAI_COMPOSITE_API_URL,
-    IS_ORIGIN_REASONING,
-)
+# 创建 DeepClaude 实例
+deep_claude = DeepClaude()
 
 # 验证日志级别
 logger.debug("当前日志级别为 DEBUG")
@@ -144,56 +100,39 @@ async def chat_completions(request: Request):
         body = await request.json()
         messages = body.get("messages")
         model = body.get("model")
+        model_config = get_model_config()
 
         if not model:
             raise ValueError("必须指定模型名称")
 
         # 2. 获取并验证参数
         model_arg = get_and_validate_params(body)
-        stream = model_arg[4]  # 获取 stream 参数
+        stream = model_arg[4]
 
-        # 3. 根据模型选择不同的处理方式
-        if model == "deepclaude":
-            # 使用 DeepClaude
-            claude_model = (
-                ENV_CLAUDE_MODEL if ENV_CLAUDE_MODEL else "claude-3-5-sonnet-20241022"
+        # 3. Select Model
+        deep_model = model_config.get_deep_model(model)
+        if deep_model not in model_config.deep_models:
+            logger.error(f"Cannot find model {model}")
+            raise ValueError(f"Cannot find model {model}")
+
+        # TODO: Add context limit check
+
+        # 4. Start Processing
+        if stream:
+            return StreamingResponse(
+                deep_claude.chat_completions_with_stream(
+                    deep_model,
+                    messages,
+                    model_arg=model_arg[:4],
+                ),
+                media_type="text/event-stream",
             )
-            if stream:
-                return StreamingResponse(
-                    deep_claude.chat_completions_with_stream(
-                        messages=messages,
-                        model_arg=model_arg[:4],
-                        deepseek_model=DEEPSEEK_MODEL,
-                        claude_model=claude_model,
-                    ),
-                    media_type="text/event-stream",
-                )
-            else:
-                return await deep_claude.chat_completions_without_stream(
-                    messages=messages,
-                    model_arg=model_arg[:4],
-                    deepseek_model=DEEPSEEK_MODEL,
-                    claude_model=claude_model,
-                )
         else:
-            # 使用 OpenAI 兼容组合模型
-            if stream:
-                return StreamingResponse(
-                    openai_composite.chat_completions_with_stream(
-                        messages=messages,
-                        model_arg=model_arg[:4],
-                        deepseek_model=DEEPSEEK_MODEL,
-                        target_model=OPENAI_COMPOSITE_MODEL,
-                    ),
-                    media_type="text/event-stream",
-                )
-            else:
-                return await openai_composite.chat_completions_without_stream(
-                    messages=messages,
-                    model_arg=model_arg[:4],
-                    deepseek_model=DEEPSEEK_MODEL,
-                    target_model=OPENAI_COMPOSITE_MODEL,
-                )
+            return await deep_claude.chat_completions_without_stream(
+                deep_model,
+                messages,
+                model_arg=model_arg[:4],
+            )
 
     except Exception as e:
         logger.error(f"处理请求时发生错误: {e}")

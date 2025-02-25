@@ -8,47 +8,30 @@ from typing import AsyncGenerator
 import tiktoken
 
 from app.clients import ClaudeClient, DeepSeekClient
+from app.config.model_config import DeepModelConfig, ModelConfig, get_model_config
 from app.utils.logger import logger
 
 
 class DeepClaude:
     """处理 DeepSeek 和 Claude API 的流式输出衔接"""
 
-    def __init__(
-        self,
-        deepseek_api_key: str,
-        claude_api_key: str,
-        deepseek_api_url: str = "https://api.deepseek.com/v1/chat/completions",
-        claude_api_url: str = "https://api.anthropic.com/v1/messages",
-        claude_provider: str = "anthropic",
-        is_origin_reasoning: bool = True,
-    ):
-        """初始化 API 客户端
-
-        Args:
-            deepseek_api_key: DeepSeek API密钥
-            claude_api_key: Claude API密钥
-        """
-        self.deepseek_client = DeepSeekClient(deepseek_api_key, deepseek_api_url)
-        self.claude_client = ClaudeClient(
-            claude_api_key, claude_api_url, claude_provider
-        )
-        self.is_origin_reasoning = is_origin_reasoning
+    def __init__(self):
+        self.deepseek_client = DeepSeekClient()
+        self.claude_client = ClaudeClient()
+        self._model_config: ModelConfig = get_model_config()
 
     async def chat_completions_with_stream(
         self,
+        deep_model: DeepModelConfig,
         messages: list,
         model_arg: tuple[float, float, float, float],
-        deepseek_model: str = "deepseek-reasoner",
-        claude_model: str = "claude-3-5-sonnet-20241022",
     ) -> AsyncGenerator[bytes, None]:
         """处理完整的流式输出过程
 
         Args:
             messages: 初始消息列表
+            model: 模型名称
             model_arg: 模型参数
-            deepseek_model: DeepSeek 模型名称
-            claude_model: Claude 模型名称
 
         Yields:
             字节流数据，格式如下：
@@ -67,23 +50,33 @@ class DeepClaude:
                 }]
             }
         """
+
+        # Obtain relevant information from model_config
+        deepseek_model = self._model_config.get_base_model(deep_model.reason_model)
+        claude_model = self._model_config.get_base_model(deep_model.answer_model)
+
         # 生成唯一的会话ID和时间戳
         chat_id = f"chatcmpl-{hex(int(time.time() * 1000))[2:]}"
         created_time = int(time.time())
 
         # 创建队列，用于收集输出数据
         output_queue = asyncio.Queue()
-        # 队列，用于传递 DeepSeek 推理内容给 Claude
         claude_queue = asyncio.Queue()
 
         # 用于存储 DeepSeek 的推理累积内容
         reasoning_content = []
 
         async def process_deepseek():
-            logger.info(f"开始处理 DeepSeek 流，使用模型：{deepseek_model}")
+            logger.info(
+                f"开始处理 DeepSeek 流，使用模型：{deepseek_model.model_id}, 提供商: {self._model_config.get_provider(deepseek_model.provider).name}"
+            )
             try:
-                async for content_type, content in self.deepseek_client.stream_chat(
-                    messages, deepseek_model, self.is_origin_reasoning
+                async for content_type, content in self.deepseek_client.chat(
+                    deepseek_model,
+                    messages,
+                    None,  # There is no model arg setting for deepseek_model
+                    is_origin_reasoning=deep_model.is_origin_reasoning,
+                    stream=True,
                 ):
                     if content_type == "reasoning":
                         reasoning_content.append(content)
@@ -91,7 +84,7 @@ class DeepClaude:
                             "id": chat_id,
                             "object": "chat.completion.chunk",
                             "created": created_time,
-                            "model": deepseek_model,
+                            "model": deepseek_model.model_id,
                             "choices": [
                                 {
                                     "index": 0,
@@ -159,20 +152,21 @@ class DeepClaude:
                 last_message["content"] = fixed_content
 
                 logger.info(
-                    f"开始处理 Claude 流，使用模型: {claude_model}, 提供商: {self.claude_client.provider}"
+                    f"开始处理 Claude 流，使用模型: {claude_model.model_id}, 提供商: {self._model_config.get_provider(claude_model.provider).name}"
                 )
 
-                async for content_type, content in self.claude_client.stream_chat(
+                async for content_type, content in self.claude_client.chat(
+                    claude_model,
                     messages=claude_messages,
                     model_arg=model_arg,
-                    model=claude_model,
+                    stream=True,
                 ):
                     if content_type == "answer":
                         response = {
                             "id": chat_id,
                             "object": "chat.completion.chunk",
                             "created": created_time,
-                            "model": claude_model,
+                            "model": claude_model.model_id,
                             "choices": [
                                 {
                                     "index": 0,
@@ -207,30 +201,37 @@ class DeepClaude:
 
     async def chat_completions_without_stream(
         self,
+        deep_model: DeepModelConfig,
         messages: list,
         model_arg: tuple[float, float, float, float],
-        deepseek_model: str = "deepseek-reasoner",
-        claude_model: str = "claude-3-5-sonnet-20241022",
     ) -> dict:
         """处理非流式输出过程
 
         Args:
             messages: 初始消息列表
+            model: 模型名称
             model_arg: 模型参数
-            deepseek_model: DeepSeek 模型名称
-            claude_model: Claude 模型名称
 
         Returns:
             dict: OpenAI 格式的完整响应
         """
+
+        # Obtain relevant information from model_config
+        deepseek_model = self._model_config.get_base_model(deep_model.reason_model)
+        claude_model = self._model_config.get_base_model(deep_model.answer_model)
+
         chat_id = f"chatcmpl-{hex(int(time.time() * 1000))[2:]}"
         created_time = int(time.time())
         reasoning_content = []
 
         # 1. 获取 DeepSeek 的推理内容（仍然使用流式）
         try:
-            async for content_type, content in self.deepseek_client.stream_chat(
-                messages, deepseek_model, self.is_origin_reasoning
+            async for content_type, content in self.deepseek_client.chat(
+                deepseek_model,
+                messages,
+                None,
+                is_origin_reasoning=deep_model.is_origin_reasoning,
+                stream=True,
             ):
                 if content_type == "reasoning":
                     reasoning_content.append(content)
@@ -277,10 +278,10 @@ class DeepClaude:
         try:
             answer = ""
             output_tokens = []  # 初始化 output_tokens
-            async for content_type, content in self.claude_client.stream_chat(
+            async for content_type, content in self.claude_client.chat(
+                claude_model,
                 messages=claude_messages,
                 model_arg=model_arg,
-                model=claude_model,
                 stream=False,
             ):
                 if content_type == "answer":
@@ -293,7 +294,7 @@ class DeepClaude:
                 "id": chat_id,
                 "object": "chat.completion",
                 "created": created_time,
-                "model": claude_model,
+                "model": claude_model.model_id,
                 "choices": [
                     {
                         "index": 0,

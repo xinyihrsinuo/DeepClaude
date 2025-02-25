@@ -6,6 +6,7 @@ from typing import AsyncGenerator, Optional
 import aiohttp
 from aiohttp.client_exceptions import ClientError, ServerTimeoutError
 
+from app.config.model_config import BaseModelConfig
 from app.utils.logger import logger
 
 
@@ -21,27 +22,21 @@ class BaseClient(ABC):
 
     def __init__(
         self,
-        api_key: str,
-        api_url: str,
         timeout: Optional[aiohttp.ClientTimeout] = None,
     ):
-        """初始化基础客户端
-
-        Args:
-            api_key: API密钥
-            api_url: API地址
-            timeout: 请求超时设置,None则使用默认值
-        """
-        self.api_key = api_key
-        self.api_url = api_url
         self.timeout = timeout or self.DEFAULT_TIMEOUT
 
     async def _make_request(
-        self, headers: dict, data: dict, timeout: Optional[aiohttp.ClientTimeout] = None
+        self,
+        api_url: str,
+        headers: dict,
+        data: dict,
+        timeout: Optional[aiohttp.ClientTimeout] = None,
     ) -> AsyncGenerator[bytes, None]:
         """发送请求并处理响应
 
         Args:
+            api_url: API地址
             headers: 请求头
             data: 请求数据
             timeout: 当前请求的超时设置,None则使用实例默认值
@@ -61,7 +56,7 @@ class BaseClient(ABC):
             connector = aiohttp.TCPConnector(limit=100, force_close=True)
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
-                    self.api_url, headers=headers, json=data, timeout=request_timeout
+                    api_url, headers=headers, json=data, timeout=request_timeout
                 ) as response:
                     # 检查响应状态
                     if not response.ok:
@@ -91,14 +86,22 @@ class BaseClient(ABC):
             raise
 
     @abstractmethod
-    async def stream_chat(
-        self, messages: list, model: str
+    async def chat(
+        self,
+        base_model: BaseModelConfig,
+        messages: list,
+        model_arg,
+        is_origin_reasoning: bool,
+        stream: bool = True,
     ) -> AsyncGenerator[tuple[str, str], None]:
-        """流式对话，由子类实现
+        """对话，由子类实现
 
         Args:
             messages: 消息列表
-            model: 模型名称
+            model_alias_name: 模型名称 (not model_id)
+            model_arg: 模型参数
+            is_origin_reasoning: 是否原始推理
+            stream: 是否流式返回结果
 
         Yields:
             tuple[str, str]: (内容类型, 内容)
