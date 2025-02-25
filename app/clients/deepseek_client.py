@@ -3,24 +3,18 @@
 import json
 from typing import AsyncGenerator
 
+from typing_extensions import override
+
+from app.config.model_config import BaseModelConfig, get_model_config
 from app.utils.logger import logger
 
 from .base_client import BaseClient
 
 
 class DeepSeekClient(BaseClient):
-    def __init__(
-        self,
-        api_key: str,
-        api_url: str = "https://api.siliconflow.cn/v1/chat/completions",
-    ):
-        """初始化 DeepSeek 客户端
-
-        Args:
-            api_key: DeepSeek API密钥
-            api_url: DeepSeek API地址
-        """
-        super().__init__(api_key, api_url)
+    def __init__(self):
+        super().__init__()
+        self._model_config = get_model_config()
 
     def _process_think_tag_content(self, content: str) -> tuple[bool, str]:
         """处理包含 think 标签的内容
@@ -45,11 +39,14 @@ class DeepSeekClient(BaseClient):
         else:
             return True, content
 
-    async def stream_chat(
+    @override
+    async def chat(
         self,
+        base_model: BaseModelConfig,
         messages: list,
-        model: str = "deepseek-ai/DeepSeek-R1",
-        is_origin_reasoning: bool = True,
+        model_arg,
+        is_origin_reasoning: bool,
+        stream: bool = True,
     ) -> AsyncGenerator[tuple[str, str], None]:
         """流式对话
 
@@ -62,13 +59,19 @@ class DeepSeekClient(BaseClient):
                 内容类型: "reasoning" 或 "content"
                 内容: 实际的文本内容
         """
+
+        # Obtain relevant information from model_config
+        model_id, base_url, api_key, provider_type = (
+            self._model_config.get_model_request_info(base_model.name)
+        )
+
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
         }
         data = {
-            "model": model,
+            "model": model_id,
             "messages": messages,
             "stream": True,
         }
@@ -78,7 +81,7 @@ class DeepSeekClient(BaseClient):
         accumulated_content = ""
         is_collecting_think = False
 
-        async for chunk in self._make_request(headers, data):
+        async for chunk in self._make_request(base_url, headers, data):
             chunk_str = chunk.decode("utf-8")
 
             try:

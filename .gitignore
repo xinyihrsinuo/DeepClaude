@@ -10,9 +10,15 @@ wheels/
 .env
 .env.*
 !.env.example
+*.yaml
+!model.example.yaml
 
 # Virtual environments
 .venv
 
 # Windsurf
 .windsurfrules
+
+# Editor
+.zed/
+.vscode/

@@ -3,33 +3,26 @@
 import json
 from typing import AsyncGenerator
 
+from typing_extensions import override
+
+from app.config.model_config import BaseModelConfig, ProviderType, get_model_config
 from app.utils.logger import logger
 
 from .base_client import BaseClient
 
 
 class ClaudeClient(BaseClient):
-    def __init__(
-        self,
-        api_key: str,
-        api_url: str = "https://api.anthropic.com/v1/messages",
-        provider: str = "anthropic",
-    ):
-        """初始化 Claude 客户端
+    def __init__(self):
+        super().__init__()
+        self._model_config = get_model_config()
 
-        Args:
-            api_key: Claude API密钥
-            api_url: Claude API地址
-            is_openrouter: 是否使用 OpenRouter API
-        """
-        super().__init__(api_key, api_url)
-        self.provider = provider
-
-    async def stream_chat(
+    @override
+    async def chat(
         self,
+        base_model: BaseModelConfig,
         messages: list,
         model_arg: tuple[float, float, float, float],
-        model: str,
+        is_origin_reasoning: bool = False,
         stream: bool = True,
         system_prompt: str = None,
     ) -> AsyncGenerator[tuple[str, str], None]:
@@ -48,12 +41,17 @@ class ClaudeClient(BaseClient):
                 内容: 实际的文本内容
         """
 
-        if self.provider == "openrouter":
+        # Obtain relevant information from model_config
+        model_id, base_url, api_key, provider_type = (
+            self._model_config.get_model_request_info(base_model.name)
+        )
+
+        if provider_type == ProviderType.OPENROUTER:
             # 转换模型名称为 OpenRouter 格式
             model = "anthropic/claude-3.5-sonnet"
 
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://github.com/ErlichLiu/DeepClaude",  # OpenRouter 需要
                 "X-Title": "DeepClaude",  # OpenRouter 需要
@@ -66,7 +64,7 @@ class ClaudeClient(BaseClient):
             data = {
                 "model": model,  # OpenRouter 使用 anthropic/claude-3.5-sonnet 格式
                 "messages": messages,
-                "stream": stream,
+                "stream": True,
                 "temperature": 1
                 if model_arg[0] < 0 or model_arg[0] > 1
                 else model_arg[0],
@@ -74,10 +72,9 @@ class ClaudeClient(BaseClient):
                 "presence_penalty": model_arg[2],
                 "frequency_penalty": model_arg[3],
             }
-            
-        elif self.provider == "oneapi":
+        elif provider_type == ProviderType.OPENAI_COMPATIBLE:
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
 
@@ -86,9 +83,9 @@ class ClaudeClient(BaseClient):
                 messages.insert(0, {"role": "system", "content": system_prompt})
 
             data = {
-                "model": model,
+                "model": model_id,
                 "messages": messages,
-                "stream": stream,
+                "stream": True,
                 "temperature": 1
                 if model_arg[0] < 0 or model_arg[0] > 1
                 else model_arg[0],
@@ -96,20 +93,19 @@ class ClaudeClient(BaseClient):
                 "presence_penalty": model_arg[2],
                 "frequency_penalty": model_arg[3],
             }
-                
-        elif self.provider == "anthropic":
+        elif provider_type == ProviderType.ANTHROPIC:
             headers = {
-                "x-api-key": self.api_key,
+                "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
-                "accept": "text/event-stream" if stream else "application/json",
+                "accept": "text/event-stream",
             }
 
             data = {
-                "model": model,
+                "model": model_id,
                 "messages": messages,
                 "max_tokens": 8192,
-                "stream": stream,
+                "stream": True,
                 "temperature": 1
                 if model_arg[0] < 0 or model_arg[0] > 1
                 else model_arg[0],  # Claude仅支持temperature与top_p
@@ -120,12 +116,12 @@ class ClaudeClient(BaseClient):
             if system_prompt:
                 data["system"] = system_prompt
         else:
-            raise ValueError(f"不支持的Claude Provider: {self.provider}")
+            raise ValueError(f"不支持的Claude Provider: {provider_type}")
 
         logger.debug(f"开始对话：{data}")
 
         if stream:
-            async for chunk in self._make_request(headers, data):
+            async for chunk in self._make_request(base_url, headers, data):
                 chunk_str = chunk.decode("utf-8")
                 if not chunk_str.strip():
                     continue
@@ -138,7 +134,10 @@ class ClaudeClient(BaseClient):
 
                         try:
                             data = json.loads(json_str)
-                            if self.provider in ("openrouter", "oneapi"):
+                            if provider_type in (
+                                ProviderType.OPENROUTER,
+                                ProviderType.OPENAI_COMPATIBLE,
+                            ):
                                 # OpenRouter/OneApi 格式
                                 content = (
                                     data.get("choices", [{}])[0]
@@ -147,7 +146,7 @@ class ClaudeClient(BaseClient):
                                 )
                                 if content:
                                     yield "answer", content
-                            elif self.provider == "anthropic":
+                            elif provider_type == ProviderType.ANTHROPIC:
                                 # Anthropic 格式
                                 if data.get("type") == "content_block_delta":
                                     content = data.get("delta", {}).get("text", "")
@@ -155,16 +154,19 @@ class ClaudeClient(BaseClient):
                                         yield "answer", content
                             else:
                                 raise ValueError(
-                                    f"不支持的Claude Provider: {self.provider}"
+                                    f"不支持的Claude Provider: {provider_type}"
                                 )
                         except json.JSONDecodeError:
                             continue
         else:
             # 非流式输出
-            async for chunk in self._make_request(headers, data):
+            async for chunk in self._make_request(base_url, headers, data):
                 try:
                     response = json.loads(chunk.decode("utf-8"))
-                    if self.provider in ("openrouter", "oneapi"):
+                    if provider_type in (
+                        ProviderType.OPENROUTER,
+                        ProviderType.OPENAI_COMPATIBLE,
+                    ):
                         content = (
                             response.get("choices", [{}])[0]
                             .get("message", {})
@@ -172,11 +174,11 @@ class ClaudeClient(BaseClient):
                         )
                         if content:
                             yield "answer", content
-                    elif self.provider == "anthropic":
+                    elif provider_type == ProviderType.ANTHROPIC:
                         content = response.get("content", [{}])[0].get("text", "")
                         if content:
                             yield "answer", content
                     else:
-                        raise ValueError(f"不支持的Claude Provider: {self.provider}")
+                        raise ValueError(f"不支持的Claude Provider: {provider_type}")
                 except json.JSONDecodeError:
                     continue
