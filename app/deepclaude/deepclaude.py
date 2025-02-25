@@ -130,12 +130,17 @@ class DeepClaude:
                 Here's my another model's reasoning process:\n{reasoning}\n\n
                 Based on this reasoning, provide your response directly to me:"""
 
-                # 处理可能 messages 内存在 role = system 的情况
-                claude_messages = [
-                    message
-                    for message in claude_messages
-                    if message.get("role", "") != "system"
-                ]
+                # 提取 system message 并同时过滤掉 system messages
+                system_content = ""
+                non_system_messages = []
+                for message in claude_messages:
+                    if message.get("role", "") == "system":
+                        system_content += message.get("content", "") + "\n"
+                    else:
+                        non_system_messages.append(message)
+                
+                # 更新消息列表为不包含 system 消息的列表
+                claude_messages = non_system_messages
 
                 # 检查过滤后的消息列表是否为空
                 if not claude_messages:
@@ -155,11 +160,17 @@ class DeepClaude:
                     f"开始处理 Claude 流，使用模型: {claude_model.model_id}, 提供商: {self._model_config.get_provider(claude_model.provider).name}"
                 )
 
+                # 检查 system_prompt
+                system_content = system_content.strip() if system_content else None
+                if system_content:
+                    logger.debug(f"使用系统提示: {system_content[:100]}...")
+
                 async for content_type, content in self.claude_client.chat(
                     claude_model,
                     messages=claude_messages,
                     model_arg=model_arg,
                     stream=True,
+                    system_prompt=system_content
                 ):
                     if content_type == "answer":
                         response = {
@@ -249,7 +260,19 @@ class DeepClaude:
             Here's my another model's reasoning process:\n{reasoning}\n\n
             Based on this reasoning, provide your response directly to me:"""
 
-        # 改造最后一个消息对象，判断消息对象是 role = user，然后在这个对象的 content 后追加新的 String
+        # 提取 system message 并同时从原始 messages 中过滤掉 system messages
+        system_content = ""
+        non_system_messages = []
+        for message in claude_messages:
+            if message.get("role", "") == "system":
+                system_content += message.get("content", "") + "\n"
+            else:
+                non_system_messages.append(message)
+        
+        # 更新消息列表为不包含 system 消息的列表
+        claude_messages = non_system_messages
+
+        # 获取最后一个消息并检查其角色
         last_message = claude_messages[-1]
         if last_message.get("role", "") == "user":
             original_content = last_message["content"]
@@ -257,13 +280,6 @@ class DeepClaude:
                 f"Here's my original input:\n{original_content}\n\n{combined_content}"
             )
             last_message["content"] = fixed_content
-
-        # 处理可能 messages 内存在 role = system 的情况
-        claude_messages = [
-            message
-            for message in claude_messages
-            if message.get("role", "") != "system"
-        ]
 
         # 拼接所有 content 为一个字符串，计算 token
         token_content = "\n".join(
@@ -278,11 +294,18 @@ class DeepClaude:
         try:
             answer = ""
             output_tokens = []  # 初始化 output_tokens
+            
+            # 检查 system_prompt
+            system_content = system_content.strip() if system_content else None
+            if system_content:
+                logger.debug(f"使用系统提示: {system_content[:100]}...")
+            
             async for content_type, content in self.claude_client.chat(
                 claude_model,
                 messages=claude_messages,
                 model_arg=model_arg,
                 stream=False,
+                system_prompt=system_content
             ):
                 if content_type == "answer":
                     answer += content

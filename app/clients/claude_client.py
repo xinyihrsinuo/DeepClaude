@@ -24,6 +24,7 @@ class ClaudeClient(BaseClient):
         model_arg: tuple[float, float, float, float],
         is_origin_reasoning: bool = False,
         stream: bool = True,
+        system_prompt: str = None,
     ) -> AsyncGenerator[tuple[str, str], None]:
         """流式或非流式对话
 
@@ -32,6 +33,7 @@ class ClaudeClient(BaseClient):
             model_arg: 模型参数元组[temperature, top_p, presence_penalty, frequency_penalty]
             model: 模型名称。如果是 OpenRouter, 会自动转换为 'anthropic/claude-3.5-sonnet' 格式
             stream: 是否使用流式输出，默认为 True
+            system_prompt: 系统提示
 
         Yields:
             tuple[str, str]: (内容类型, 内容)
@@ -55,6 +57,10 @@ class ClaudeClient(BaseClient):
                 "X-Title": "DeepClaude",  # OpenRouter 需要
             }
 
+            # 传递 OpenRouterOneAPI system prompt
+            if system_prompt:
+                messages.insert(0, {"role": "system", "content": system_prompt})
+
             data = {
                 "model": model,  # OpenRouter 使用 anthropic/claude-3.5-sonnet 格式
                 "messages": messages,
@@ -71,6 +77,10 @@ class ClaudeClient(BaseClient):
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
+
+            # 传递 OneAPI system prompt
+            if system_prompt:
+                messages.insert(0, {"role": "system", "content": system_prompt})
 
             data = {
                 "model": model_id,
@@ -101,6 +111,10 @@ class ClaudeClient(BaseClient):
                 else model_arg[0],  # Claude仅支持temperature与top_p
                 "top_p": model_arg[1],
             }
+            
+            # Anthropic 原生 API 支持 system 参数
+            if system_prompt:
+                data["system"] = system_prompt
         else:
             raise ValueError(f"不支持的Claude Provider: {provider_type}")
 
