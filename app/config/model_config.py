@@ -19,9 +19,10 @@ class ProviderConfig(BaseModel):
     type: ProviderType
     base_url: str
     api_key: str
+    use_proxy: bool
 
     # validate existed ProviderType
-    @validator("type")
+    @validator("type") # FIXME: replace this deprecated annotation
     def _validate_provider_type(cls, v) -> ProviderType:
         if v not in ProviderType:
             logger.error(f"Invalid provider type: '{v}'")
@@ -171,7 +172,7 @@ class ModelConfig(BaseModel):
 
     def get_model_request_info(
         self, model_name: str
-    ) -> tuple[str, str, str, ProviderType]:
+    ) -> tuple[str, str, str, ProviderType, bool]:
         base_model = self.get_base_model(model_name)
         provider = self.get_provider(base_model.provider)
 
@@ -180,6 +181,7 @@ class ModelConfig(BaseModel):
             provider.base_url,
             provider.api_key,
             provider.type,
+            provider.use_proxy,
         )
 
 

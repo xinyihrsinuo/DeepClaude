@@ -61,7 +61,7 @@ class DeepSeekClient(BaseClient):
         """
 
         # Obtain relevant information from model_config
-        model_id, base_url, api_key, provider_type = (
+        model_id, base_url, api_key, provider_type , use_proxy = (
             self._model_config.get_model_request_info(base_model.name)
         )
 
@@ -81,7 +81,9 @@ class DeepSeekClient(BaseClient):
         accumulated_content = ""
         is_collecting_think = False
 
-        async for chunk in self._make_request(base_url, headers, data):
+        async for chunk in self._make_request(
+            base_url, headers, data, use_proxy=use_proxy
+        ):
             chunk_str = chunk.decode("utf-8")
 
             try:

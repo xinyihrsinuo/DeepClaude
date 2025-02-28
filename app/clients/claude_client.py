@@ -42,7 +42,7 @@ class ClaudeClient(BaseClient):
         """
 
         # Obtain relevant information from model_config
-        model_id, base_url, api_key, provider_type = (
+        model_id, base_url, api_key, provider_type , use_proxy= (
             self._model_config.get_model_request_info(base_model.name)
         )
 
@@ -111,7 +111,7 @@ class ClaudeClient(BaseClient):
                 else model_arg[0],  # Claude仅支持temperature与top_p
                 "top_p": model_arg[1],
             }
-            
+
             # Anthropic 原生 API 支持 system 参数
             if system_prompt:
                 data["system"] = system_prompt
@@ -121,7 +121,9 @@ class ClaudeClient(BaseClient):
         logger.debug(f"开始对话：{data}")
 
         if stream:
-            async for chunk in self._make_request(base_url, headers, data):
+            async for chunk in self._make_request(
+                base_url, headers, data, use_proxy=use_proxy
+            ):
                 chunk_str = chunk.decode("utf-8")
                 if not chunk_str.strip():
                     continue
@@ -160,7 +162,9 @@ class ClaudeClient(BaseClient):
                             continue
         else:
             # 非流式输出
-            async for chunk in self._make_request(base_url, headers, data):
+            async for chunk in self._make_request(
+                base_url, headers, data, use_proxy=use_proxy
+            ):
                 try:
                     response = json.loads(chunk.decode("utf-8"))
                     if provider_type in (

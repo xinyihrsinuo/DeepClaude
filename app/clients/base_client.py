@@ -1,4 +1,5 @@
 """基础客户端类,定义通用接口"""
+import os
 
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Optional
@@ -26,12 +27,20 @@ class BaseClient(ABC):
     ):
         self.timeout = timeout or self.DEFAULT_TIMEOUT
 
+        # 从环境变量读取代理地址
+        self.proxy_url = os.getenv("PROXY_URL", None)  # 如果未设置代理地址，默认为 None
+        if self.proxy_url:
+            logger.info("代理地址: %s", self.proxy_url)
+        else:
+            logger.info("未设置代理地址, 将不使用代理地址")
+
     async def _make_request(
         self,
         api_url: str,
         headers: dict,
         data: dict,
         timeout: Optional[aiohttp.ClientTimeout] = None,
+        use_proxy: bool = False,
     ) -> AsyncGenerator[bytes, None]:
         """发送请求并处理响应
 
@@ -40,6 +49,7 @@ class BaseClient(ABC):
             headers: 请求头
             data: 请求数据
             timeout: 当前请求的超时设置,None则使用实例默认值
+            use_proxy: 是否使用代理
 
         Yields:
             bytes: 原始响应数据
@@ -51,12 +61,23 @@ class BaseClient(ABC):
         """
         request_timeout = timeout or self.timeout
 
+        proxy_url = self.proxy_url if use_proxy else None
+
+        if proxy_url: # 代理地址已配置, 且服务商需要使用代理
+            logger.info("使用代理地址: %s", proxy_url)
+        elif use_proxy: # 代理地址未配置, 且服务商需要使用代理
+            logger.warning("服务商需要代理地址，请设置环境变量 PROXY_URL")
+
         try:
             # 使用 connector 参数来优化连接池
             connector = aiohttp.TCPConnector(limit=100, force_close=True)
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
-                    api_url, headers=headers, json=data, timeout=request_timeout
+                    api_url,
+                    headers=headers,
+                    json=data,
+                    timeout=request_timeout,
+                    proxy=proxy_url
                 ) as response:
                     # 检查响应状态
                     if not response.ok:

@@ -12,26 +12,33 @@ providers:
   #   base_url: 服务商api地址
   #
   #   api_key: 服务商api key
+  #
+  #   proxy: 是否使用代理, True/False
+  #              如果使用代理, 请在.env中配置PROXY_URL
 
   - name: "anthropic"
     type: "anthropic"
     base_url: "https://api.anthropic.com/v1/messages"
     api_key: <your_api_key_here>
+    use_proxy: True
 
   - name: "deepseek"
     type: "openai-compatible"
     base_url: "https://api.deepseek.com/v1/chat/completions"
     api_key: <your_api_key_here>
+    use_proxy: False
 
   - name: "openrouter"
     type: "openrouter"
     base_url: "https://openrouter.ai/api/v1/chat/completions"
     api_key: <your_api_key_here>
+    use_proxy: False
 
   - name: "google"
     type: "openai-compatible"
     base_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     api_key: <your_api_key_here>
+    use_proxy: True
 
 base_models:
   #
