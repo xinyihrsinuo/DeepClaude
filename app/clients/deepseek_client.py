@@ -5,7 +5,8 @@ from typing import AsyncGenerator
 
 from typing_extensions import override
 
-from app.config.model_config import BaseModelConfig, get_model_config
+from app.config.model_config import BaseModelConfig
+from app.utils.config.manager import ModelConfigManager
 from app.utils.logger import logger
 
 from .base_client import BaseClient
@@ -14,7 +15,7 @@ from .base_client import BaseClient
 class DeepSeekClient(BaseClient):
     def __init__(self):
         super().__init__()
-        self._model_config = get_model_config()
+        self._model_config = ModelConfigManager.get_model_config()
 
     def _process_think_tag_content(self, content: str) -> tuple[bool, str]:
         """处理包含 think 标签的内容
@@ -61,7 +62,7 @@ class DeepSeekClient(BaseClient):
         """
 
         # Obtain relevant information from model_config
-        model_id, base_url, api_key, provider_type , use_proxy = (
+        model_id, base_url, api_key, provider_type, use_proxy = (
             self._model_config.get_model_request_info(base_model.name)
         )
 

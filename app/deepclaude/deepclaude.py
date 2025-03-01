@@ -8,7 +8,8 @@ from typing import AsyncGenerator
 import tiktoken
 
 from app.clients import ClaudeClient, DeepSeekClient
-from app.config.model_config import DeepModelConfig, ModelConfig, get_model_config
+from app.config.model_config import DeepModelConfig, ModelConfig
+from app.utils.config.manager import ModelConfigManager
 from app.utils.logger import logger
 
 
@@ -18,7 +19,7 @@ class DeepClaude:
     def __init__(self):
         self.deepseek_client = DeepSeekClient()
         self.claude_client = ClaudeClient()
-        self._model_config: ModelConfig = get_model_config()
+        self._model_config: ModelConfig = ModelConfigManager.get_model_config()
 
     async def chat_completions_with_stream(
         self,

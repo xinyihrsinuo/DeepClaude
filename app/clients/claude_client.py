@@ -5,7 +5,8 @@ from typing import AsyncGenerator
 
 from typing_extensions import override
 
-from app.config.model_config import BaseModelConfig, ProviderType, get_model_config
+from app.config.model_config import BaseModelConfig, ProviderType
+from app.utils.config.manager import ModelConfigManager
 from app.utils.logger import logger
 
 from .base_client import BaseClient
@@ -14,7 +15,7 @@ from .base_client import BaseClient
 class ClaudeClient(BaseClient):
     def __init__(self):
         super().__init__()
-        self._model_config = get_model_config()
+        self._model_config = ModelConfigManager.get_model_config()
 
     @override
     async def chat(

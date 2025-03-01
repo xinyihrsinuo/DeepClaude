@@ -5,14 +5,14 @@ from pathlib import Path
 
 import yaml
 
-from app.config.model_config import get_model_config
+from app.utils.config.manager import ModelConfigManager
 
 
 def generate_shown_models(output_path: Path):
     """Generate a list of models to be shown based on deep_models in model_config"""
 
     models = []
-    for deep_model in get_model_config().deep_models:
+    for deep_model in ModelConfigManager.get_model_config().deep_models:
         model_id = deep_model.name
         permission_id = f"modelperm-{model_id}"
         create_time = int(time.time())

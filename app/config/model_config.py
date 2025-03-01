@@ -9,12 +9,14 @@ from app.utils.logger import logger
 
 
 class ProviderType(str, Enum):
+    """Enum for Provider Type"""
     ANTHROPIC = "anthropic"
     OPENROUTER = "openrouter"
     OPENAI_COMPATIBLE = "openai-compatible"
 
 
 class ProviderConfig(BaseModel):
+    """Provider Configuration"""
     name: str
     type: ProviderType
     base_url: str
@@ -49,6 +51,7 @@ class ProviderConfig(BaseModel):
 
 
 class BaseModelConfig(BaseModel):
+    """"Base Model Configuration"""
     name: str
     model_id: str
     provider: str
@@ -65,6 +68,7 @@ class BaseModelConfig(BaseModel):
 
 
 class DeepModelConfig(BaseModel):
+    """Deep Model Configuration"""
     name: str
     reason_model: str
     answer_model: str
@@ -80,6 +84,7 @@ class DeepModelConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    """Model configuration"""
     providers: List[ProviderConfig]
     base_models: List[BaseModelConfig]
     deep_models: List[DeepModelConfig]
@@ -147,7 +152,10 @@ class ModelConfig(BaseModel):
 
     @model_validator(mode="after")
     def _build_maps(self):
-        """Build maps as index for providers, base models, and contexts. Optimized for performance"""
+        """
+        Build maps as index for providers, base models,
+        and contexts. Optimized for performance
+        """
         providers: List[ProviderConfig] = self.providers
         base_models: List[BaseModelConfig] = self.base_models
         self._provider_map = {p.name: p for p in providers}
@@ -158,18 +166,21 @@ class ModelConfig(BaseModel):
         for model in self.deep_models:
             reason_context = self.get_base_model(model.reason_model).context
             answer_context = self.get_base_model(model.answer_model).context
-            # Select the maximum context between reason and answer models as the context for the deep model
+            # Select the maximum context between reason and answer models
+            #     as the context for the deep model
             self._context_map[model.name] = max(reason_context, answer_context)
 
         return self
 
     def get_deep_model(self, name: str) -> DeepModelConfig:
+        """Get deep_model config"""
         model = self._deep_model_map.get(name)
         if not model:
             raise ValueError(f"Deep model '{name}' not found")
         return model
 
     def get_provider(self, name: str) -> ProviderConfig:
+        """Get provider config"""
         provider = self._provider_map.get(name)
         if not provider:
             logger.error("Provider '%s' not found", name)
@@ -177,6 +188,7 @@ class ModelConfig(BaseModel):
         return provider
 
     def get_base_model(self, name: str) -> BaseModelConfig:
+        """Get base_model config"""
         model = self._base_model_map.get(name)
         if not model:
             logger.error("Model '%s' not found", name)
@@ -186,6 +198,7 @@ class ModelConfig(BaseModel):
     def get_model_request_info(
         self, model_name: str
     ) -> tuple[str, str, str, ProviderType, bool]:
+        """Get request required information"""
         base_model = self.get_base_model(model_name)
         provider = self.get_provider(base_model.provider)
 
@@ -196,19 +209,3 @@ class ModelConfig(BaseModel):
             provider.type,
             provider.use_proxy,
         )
-
-
-MODEL_CONFIG = None
-
-
-def get_model_config() -> ModelConfig:
-    """Get MODEL_CONFIG"""
-    if MODEL_CONFIG is None:
-        raise ValueError("Model config not initialized")
-    return MODEL_CONFIG
-
-
-def set_model_config(data):
-    """Set MODEL_CONFIG"""
-    global MODEL_CONFIG
-    MODEL_CONFIG = ModelConfig(**data)

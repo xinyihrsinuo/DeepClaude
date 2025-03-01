@@ -7,11 +7,11 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from app.config.model_config import get_model_config
 from app.deepclaude.deepclaude import DeepClaude
 from app.utils.auth import verify_api_key
 from app.utils.config.loader import load_model_config, load_shown_model_config
 from app.utils.config.processor import generate_shown_models
+from app.utils.config.manager import ModelConfigManager
 from app.utils.logger import logger
 
 # 加载环境变量
@@ -45,7 +45,7 @@ except Exception as e:
     sys.exit(1)
 
 logger.info("App config loaded successfully")
-logger.debug(get_model_config())
+logger.debug(ModelConfigManager.get_model_config())
 
 generate_shown_models(Path(__file__).parent / "shown_models.yaml")
 logger.info(
@@ -100,7 +100,7 @@ async def chat_completions(request: Request):
         body = await request.json()
         messages = body.get("messages")
         model = body.get("model")
-        model_config = get_model_config()
+        model_config = ModelConfigManager.get_model_config()
 
         if not model:
             raise ValueError("必须指定模型名称")

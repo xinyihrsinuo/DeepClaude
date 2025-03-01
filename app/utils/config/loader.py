@@ -5,20 +5,21 @@ from typing import Any, Dict, List
 
 import yaml
 
-from app.config.model_config import set_model_config
+from app.utils.config.manager import ModelConfigManager
 from app.utils.logger import logger
 
 
+SHOWN_MODEL_CACHE = None
+
+
 def load_model_config(yaml_path: Path):
-    with open(yaml_path, "r") as f:
+    """从配置文件加载模型配置"""
+    with open(yaml_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if not data:
-        logger.error(f"Model config file: {yaml_path} is empty")
+        logger.error("Model config file: %s is empty", yaml_path)
         raise ValueError("Config file is empty")
-    set_model_config(data)
-
-
-shown_model_cache = None
+    ModelConfigManager.set_model_config(data)
 
 
 def load_shown_model_config() -> Dict[str, List[Dict[str, Any]]]:
@@ -27,11 +28,11 @@ def load_shown_model_config() -> Dict[str, List[Dict[str, Any]]]:
     Returns:
         Dict[str, List[Dict[str, Any]]]: 模型配置字典
     """
-    global shown_model_cache
+    global SHOWN_MODEL_CACHE
 
-    if shown_model_cache is not None:
-        return shown_model_cache
+    if SHOWN_MODEL_CACHE is not None:
+        return SHOWN_MODEL_CACHE
     config_path = Path(__file__).parent.parent.parent / "shown_models.yaml"
     with open(config_path, "r", encoding="utf-8") as f:
-        shown_model_cache = yaml.safe_load(f)
-        return shown_model_cache
+        SHOWN_MODEL_CACHE = yaml.safe_load(f)
+        return SHOWN_MODEL_CACHE
