@@ -138,6 +138,10 @@ Step 6. 通过命令行启动
 # 本地运行
 uvicorn app.main:app
 ```
+如需指定主机与端口, 可传入`--host` 与 `--port`参数
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
 Step 7. 配置程序到你的 Chatbox（推荐 [Cherry Studio](https://cherry-ai.com) [NextChat](https://nextchat.dev/)、[ChatBox](https://chatboxai.app/zh)、[LobeChat](https://lobechat.com/)）
 
