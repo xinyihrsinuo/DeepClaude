@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Dict, List
 
-from pydantic import BaseModel, Field, model_validator, validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.utils.logger import logger
 
@@ -22,20 +22,28 @@ class ProviderConfig(BaseModel):
     use_proxy: bool
 
     # validate existed ProviderType
-    @validator("type") # FIXME: replace this deprecated annotation
-    def _validate_provider_type(cls, v) -> ProviderType:
-        if v not in ProviderType:
-            logger.error(f"Invalid provider type: '{v}'")
+    @model_validator(mode="after")
+    def _validate_provider_type(self) -> "ProviderConfig":
+        if self.type not in ProviderType:
+            logger.error("Invalid provider type: '%s'", self.type)
             raise ValueError(
-                f"Invalid provider type: '{v}'\nsupported provider types: {ProviderType}"
+                f"Invalid provider type: '{self.type}'\nsupported provider types: {ProviderType}"
             )
-        return v
+        return self
+
+    @model_validator(mode="after")
+    def _validate_base_url(self) -> "ProviderConfig":
+        if not self.base_url.startswith("http"):
+            logger.warning(
+                "Base URL '%s' does not start with http or https", self.base_url
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_fields_not_none(self):
         for field_name, value in self.__dict__.items():
             if value is None:
-                logger.error(f"Field '{field_name}' cannot be None")
+                logger.error("Field '%s' cannot be None", field_name)
                 raise ValueError(f"Field '{field_name}' cannot be None")
         return self
 
@@ -51,7 +59,7 @@ class BaseModelConfig(BaseModel):
     def _validate_fields_not_none(self):
         for field_name, value in self.__dict__.items():
             if value is None:
-                logger.error(f"Field '{field_name}' cannot be None")
+                logger.error("Field '%s' cannot be None", field_name)
                 raise ValueError(f"Field '{field_name}' cannot be None")
         return self
 
@@ -66,7 +74,7 @@ class DeepModelConfig(BaseModel):
     def _validate_fields_not_none(self):
         for field_name, value in self.__dict__.items():
             if value is None:
-                logger.error(f"Field '{field_name}' cannot be None")
+                logger.error("Field '%s' cannot be None", field_name)
                 raise ValueError(f"Field '{field_name}' cannot be None")
         return self
 
@@ -80,27 +88,27 @@ class ModelConfig(BaseModel):
     _deep_model_map: Dict[str, DeepModelConfig]
     _context_map: Dict[str, int]
 
-    @validator("providers")
-    def _check_unique_provider_names(cls, providers):
-        names = [p.name for p in providers]
+    @model_validator(mode="after")
+    def _check_unique_provider_names(self) -> "ModelConfig":
+        names = [p.name for p in self.providers]
         if len(names) != len(set(names)):
-            logger.error(f"Provider '{names}' duplicated")
+            logger.error("Provider '%s' duplicated", names)
             raise ValueError("Provider names must be unique")
-        return providers
+        return self
 
-    @validator("base_models")
-    def _check_unique_base_model_names(cls, base_models):
-        names = [p.name for p in base_models]
+    @model_validator(mode="after")
+    def _check_unique_base_model_names(self) -> "ModelConfig":
+        names = [p.name for p in self.base_models]
         if len(names) != len(set(names)):
-            logger.error(f"Base model '{names}' duplicated")
+            logger.error("Base model '%s' duplicated", names)
             raise ValueError("Base model names must be unique")
-        return base_models
+        return self
 
     @model_validator(mode="after")
     def _validate_fields_not_none(self):
         for field_name, value in self.__dict__.items():
             if value is None:
-                logger.error(f"Field '{field_name}' cannot be None")
+                logger.error("Field '%s' cannot be None", field_name)
                 raise ValueError(f"Field '{field_name}' cannot be None")
         return self
 
@@ -112,7 +120,9 @@ class ModelConfig(BaseModel):
         for model in base_models:
             if model.provider not in provider_names:
                 logger.error(
-                    f"Provider '{model.provider}' of BaseModel '{model.name}' not found"
+                    "Provider '%s' of BaseModel '%s' not found",
+                    model.provider,
+                    model.name,
                 )
                 raise ValueError(f"Provider '{model.provider}' not found")
 
@@ -121,12 +131,16 @@ class ModelConfig(BaseModel):
         for model in deep_models:
             if model.reason_model not in base_model_names:
                 logger.error(
-                    f"Reason model '{model.reason_model}' of DeepModel '{model.name}' not found"
+                    "Reason model '%s' of DeepModel '%s' not found",
+                    model.reason_model,
+                    model.name,
                 )
                 raise ValueError(f"Reason model '{model.reason_model}' not found")
             if model.answer_model not in base_model_names:
                 logger.error(
-                    f"Base model '{model.answer_model}' of DeepModel '{model.name}' not found"
+                    "Base model '%s' of DeepModel '%s' not found",
+                    model.answer_model,
+                    model.name,
                 )
                 raise ValueError(f"Base model '{model.answer_model}' not found")
         return self
@@ -152,21 +166,20 @@ class ModelConfig(BaseModel):
     def get_deep_model(self, name: str) -> DeepModelConfig:
         model = self._deep_model_map.get(name)
         if not model:
-            logger.error(f"Deep model '{name}' not found")
             raise ValueError(f"Deep model '{name}' not found")
         return model
 
     def get_provider(self, name: str) -> ProviderConfig:
         provider = self._provider_map.get(name)
         if not provider:
-            logger.error(f"Provider '{name}' not found")
+            logger.error("Provider '%s' not found", name)
             raise ValueError(f"Provider '{name}' not found")
         return provider
 
     def get_base_model(self, name: str) -> BaseModelConfig:
         model = self._base_model_map.get(name)
         if not model:
-            logger.error(f"Model '{name}' not found")
+            logger.error("Model '%s' not found", name)
             raise ValueError(f"Model '{name}' not found")
         return model
 
@@ -185,15 +198,17 @@ class ModelConfig(BaseModel):
         )
 
 
-model_config = None
+MODEL_CONFIG = None
 
 
 def get_model_config() -> ModelConfig:
-    if model_config is None:
+    """Get MODEL_CONFIG"""
+    if MODEL_CONFIG is None:
         raise ValueError("Model config not initialized")
-    return model_config
+    return MODEL_CONFIG
 
 
 def set_model_config(data):
-    global model_config
-    model_config = ModelConfig(**data)
+    """Set MODEL_CONFIG"""
+    global MODEL_CONFIG
+    MODEL_CONFIG = ModelConfig(**data)
